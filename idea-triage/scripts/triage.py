@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import sqlite3
 import sys
+from urllib.parse import unquote, urlsplit
 
 import direction_core as core
 
@@ -37,6 +38,8 @@ CREATE TABLE IF NOT EXISTS conditions(
 PRAGMA user_version=1;
 """
 IDENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,79}")
+EVIDENCE_ROW = re.compile(r"- \[(一手资料|静态核验|合成验证|真实实测)\] (.+?) \| (.+?) \| (.+)")
+SOURCE_LINK = re.compile(r"\[[^\[\]]+\]\(([^\s()]+)\)")
 
 
 def sha(path):
@@ -94,13 +97,59 @@ def connection(project, *, write=False, create=False):
             yield conn
 
 
-def analyze(path, require_outlook):
+def check_evidence(project, report, fields):
+    dates = re.findall(r"\b\d{4}-\d{2}-\d{2}\b", fields["networked"])
+    if len(dates) != 1 or check_date(dates[0]) > fields["date"]:
+        raise ValueError("Formal reviews require one search date in networked, on or before the review date.")
+
+    text = report.read_text(encoding="utf-8")
+    _, separator, body = text.partition("\n---\n")
+    sections = re.findall(r"^## 关键证据[ \t]*\n(.*?)(?=^#{1,2} |\Z)", body, re.M | re.S)
+    if not separator or len(sections) != 1:
+        raise ValueError("Formal reviews require one '## 关键证据' section after the score block.")
+    rows = 0
+    change = None
+    for line in sections[0].splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("- 改判条件：") and change is None:
+            change = line.removeprefix("- 改判条件：").strip()
+            continue
+        row = EVIDENCE_ROW.fullmatch(line)
+        if row is None or not all(concrete(value) for value in (row[2], row[4])):
+            raise ValueError("Each evidence row needs a grade, claim, source, and limitation.")
+        link = SOURCE_LINK.fullmatch(row[3])
+        if link is None:
+            raise ValueError("Each evidence row needs a Markdown link to its source.")
+        source = urlsplit(link[1])
+        if source.scheme in {"http", "https"} and source.hostname:
+            rows += 1
+            continue
+        path = Path(unquote(source.path))
+        if source.scheme or source.netloc or not source.path or path.is_absolute():
+            raise ValueError("Evidence sources must be web URLs or relative project files.")
+        if within(project, report.parent / path) == report:
+            raise ValueError("An evidence source cannot point to the review itself.")
+        rows += 1
+    if rows == 0 or not concrete(change):
+        raise ValueError("Formal reviews require evidence and a concrete decision-change condition.")
+
+
+def concrete(value):
+    value = (value or "").strip()
+    return bool(value and value not in {"待补", "待验证", "TODO", "TBD"} and not value.startswith("<"))
+
+
+def analyze(project, path, require_outlook):
     d = core.parse(path)
     errors = core.validate(d)
     if require_outlook and not d["outlook"]:
         errors.append("A formal review requires the second axis (outlook).")
     if errors:
         raise ValueError("\n".join(errors))
+    if require_outlook:
+        check_evidence(project, path, d)
     conditions = review_conditions(d) if require_outlook else []
     direction, _ = core.weighted_total(d)
     implied = core.implied_verdict(direction)
@@ -137,7 +186,7 @@ def register(project, args):
     if not args.legacy and args.requirements_sha != requirements_sha:
         raise ValueError("Requirements changed or no input snapshot was supplied.")
     report_sha = sha(report)
-    conditions, result = analyze(report, require_outlook=not args.legacy)
+    conditions, result = analyze(project, report, require_outlook=not args.legacy)
     if sha(report) != report_sha or (requirements is not None and sha(requirements) != requirements_sha):
         raise ValueError("Report or requirements changed during validation. Read them again.")
     values = (
@@ -164,12 +213,13 @@ def revision(conn):
     return conn.execute("SELECT revision FROM project").fetchone()[0]
 
 
-def current(conn):
+def current(conn, as_of=None):
     return conn.execute("""
         SELECT d.revision,d.verdict AS decided,d.decided_on,d.reason,r.*
         FROM decisions d JOIN reviews r ON r.id=d.review
+        WHERE (? IS NULL OR d.decided_on <= ?)
         ORDER BY d.revision DESC LIMIT 1
-    """).fetchone()
+    """, (as_of, as_of)).fetchone()
 
 
 def changed_files(project, review):
@@ -191,7 +241,7 @@ def status(project, args):
         return {"revision": 0, "current": None, "reviews": [], "decisions": [], "conditions": []}, 0
     with connection(project) as conn:
         rev = revision(conn)
-        row = current(conn)
+        row = current(conn, as_of)
         if args.cmd == "status":
             reviews = [dict(x) for x in conn.execute(
                 "SELECT id,report,kind,verdict,implied,direction,outlook,tier FROM reviews ORDER BY id"
@@ -214,7 +264,8 @@ def status(project, args):
         if row["decided"] == "conditional-go":
             overdue = [dict(x) for x in conn.execute(
                 "SELECT id,deadline,description FROM conditions WHERE review=? "
-                "AND resolved_on IS NULL AND deadline<=? ORDER BY deadline,id", (row["id"], as_of),
+                "AND (resolved_on IS NULL OR resolved_on>?) AND deadline<=? ORDER BY deadline,id",
+                (row["id"], as_of, as_of),
             )]
         return {
             "revision": rev, "current": row["id"],
@@ -231,10 +282,14 @@ def update(project, args):
         rev = revision(conn)
         if rev != args.expect:
             raise ValueError("Project revision changed. Run status and review the change.")
+        row = current(conn)
         if args.cmd == "decide":
             review = conn.execute("SELECT * FROM reviews WHERE id=?", (args.id,)).fetchone()
             if not review or review["kind"] != "formal" or changed_files(project, review):
                 raise ValueError("The review is missing, historical, or no longer matches its inputs.")
+            report_date = core.parse(within(project, review["report"]))["date"]
+            if when < report_date or (row and when < row["decided_on"]):
+                raise ValueError("Decision date must be on or after the report and the latest decision.")
             verdict = args.verdict or review["verdict"]
             if verdict == "conditional-go" and not conn.execute(
                 "SELECT 1 FROM conditions WHERE review=?", (args.id,)
@@ -242,9 +297,10 @@ def update(project, args):
                 raise ValueError("Conditional decisions require recorded conditions.")
             conn.execute("INSERT INTO decisions VALUES (?,?,?,?,?)", (rev + 1, args.id, verdict, when, note))
         else:
-            row = current(conn)
             if not row or row["decided"] != "conditional-go" or changed_files(project, row):
                 raise ValueError("No current conditional decision matching the project inputs.")
+            if when < row["decided_on"]:
+                raise ValueError("Resolution date cannot precede its decision.")
             result = conn.execute(
                 "UPDATE conditions SET resolved_on=?,evidence=? WHERE review=? AND id=? AND resolved_on IS NULL",
                 (when, note, row["id"], args.id),
@@ -299,7 +355,7 @@ def main():
         if not project.is_dir():
             raise ValueError("Project must be a directory.")
         if args.cmd in {"validate", "tier"}:
-            _, result = analyze(within(project, args.report), require_outlook=args.cmd == "tier")
+            _, result = analyze(project, within(project, args.report), require_outlook=args.cmd == "tier")
             rc = int(result["conflict"] and args.cmd == "tier")
         elif args.cmd == "snapshot":
             result, rc = {"sha256": sha(within(project, args.requirements))}, 0
