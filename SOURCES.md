@@ -7,3 +7,5 @@ The workflow draws on focused clarification and agent-facing writing guidance fr
 Other process references are linked in [the delivery guide](idea-triage/references/delivery-flow.md).
 
 The evidence-to-action check adapts the adverse-evidence review and build threshold in [Product Factory OS — Discover](https://github.com/hihol-labs/product-factory-os/blob/12085574c27f20c24d12937569e928ea706f309f/skills/discover/SKILL.md) (MIT). The check for prior behavior also draws on the customer-discovery gate in the Startup Skill version linked above. This package uses its own wording and existing state model.
+
+The readiness and handoff checks draw on [LANYANT Skills — Idea Assessment](https://github.com/ericwang200608-beep/LANYANT-Skills/blob/22e3f892911a65a42269ec4d19e586cb1b59a559/idea-assessment/references/decide.md). The upstream skill directory includes an MIT license. This package independently describes the checks and keeps its own verdicts and review history.

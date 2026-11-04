@@ -22,7 +22,7 @@ description: 澄清并评估一个新想法或复审既有项目，查现成方�
 2. 先查已有资产、开源方案与现成产品。复杂取舍用[复用对照表](templates/reuse-existing.md)比较关键需求和已核覆盖。科研核最近的一手文献与方法；商用先区分定制交付和独立产品，见[调查手册](references/research-playbook.md)与[落地途径](references/delivery-paths.md)。
 3. 比较真正可选的路线，优先验证会推翻结论的假设。写出当前证据支持的下一步，以及扩大投入前还缺的证据。遇到反证时说明它是否阻断这一步，见[调查手册](references/research-playbook.md)。
 4. 先给结论、证据、推荐路线、时间或费用量级和下一关键障碍。评估既有系统的重构时，说明会影响这批切换的旧行为、迁移去向和回退依据。复杂任务可用 [decision](templates/decision.md) 展开。流程变更和证据分工见[交付流程](references/delivery-flow.md)。
-5. 正式评估使用 [verdict](templates/verdict.md)，方向与投入各自解释。逐条列出会改变推荐的主张、来源、验证等级、适用局限和改判条件。区分现成工具存在、当前场景实跑、实际有收益。按[状态工具说明](references/stage-gate-review.md)校验和分层。联网或关键证据缺失时交暂定建议，指出限制与最小补证步骤。
+5. 正式评估使用 [verdict](templates/verdict.md)，方向与投入各自解释。逐条列出关键主张、证据和改判条件。建议进入规格或建设前，按[立项门槛](references/research-playbook.md#立项门槛与交接)核对真实问题、证据和推荐方案。证据不足时给暂定建议及补证入口。按[状态工具说明](references/stage-gate-review.md)校验和分层。
 
 只有能改变推荐的证据才值得继续找。证据充分就交付，无法继续时指出卡点并完成仍可推进的部分。排序限于实际比较的对象，投入建议不构成支出授权。
 
