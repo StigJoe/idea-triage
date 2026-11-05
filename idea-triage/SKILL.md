@@ -20,7 +20,7 @@ description: 澄清并评估一个新想法或复审既有项目，查现成方�
 
 1. 明确谁、什么场景、现状哪里不足，以及怎样验收。需要成文时使用 [requirements](templates/requirements.md)，已有权威需求直接引用。正式评估在调查前记录当前需求指纹，见[状态工具说明](references/stage-gate-review.md)。
 2. 先查已有资产、开源方案与现成产品。复杂取舍用[复用对照表](templates/reuse-existing.md)比较关键需求和已核覆盖。科研核最近的一手文献与方法；商用先区分定制交付和独立产品，见[调查手册](references/research-playbook.md)与[落地途径](references/delivery-paths.md)。
-3. 比较真正可选的路线，优先验证会推翻结论的假设。写出当前证据支持的下一步，以及扩大投入前还缺的证据。遇到反证时说明它是否阻断这一步，见[调查手册](references/research-playbook.md)。
+3. 比较真正可选的路线。找出一项结果足以改变当前建议的假设，说明现有证据支持什么、哪种结果会改判。高投入或存在实质分歧时，按[调查手册](references/research-playbook.md#挑选能改判的验证)核对最强正反解释，再选能改变决定的最低成本测试。
 4. 先给结论、证据、推荐路线、时间或费用量级和下一关键障碍。评估既有系统的重构时，说明会影响这批切换的旧行为、迁移去向和回退依据。复杂任务可用 [decision](templates/decision.md) 展开。流程变更和证据分工见[交付流程](references/delivery-flow.md)。
 5. 正式评估使用 [verdict](templates/verdict.md) 和[评分口径](references/dimensions.md)。先给适用路线和下一步，再分开报告潜力、下一阶段投入价值、该步成本效益。标明证据可信度、关键阻断与可核验的提档条件。复评说明分数为何变化及行动是否改变。建议进入规格或建设前，按[立项门槛](references/research-playbook.md#立项门槛与交接)核对真实问题、证据和推荐方案。证据不足时给暂定建议及补证入口。按[状态工具说明](references/stage-gate-review.md)校验和分层。
 
