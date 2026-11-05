@@ -170,9 +170,9 @@ def implied_verdict(total):
     return "go" if total >= 75 else "conditional-go" if total >= 60 else "pivot" if total >= 40 else "kill"
 
 
-def weighted_total(d):
+def weighted_total(d, weights=WEIGHTS):
     tot, miss = 0.0, []
-    for k, w in WEIGHTS.items():
+    for k, w in weights.items():
         v = d.get("rubric", {}).get(k)
         if v is None:
             miss.append(k)
@@ -181,8 +181,11 @@ def weighted_total(d):
     return round(tot, 1), miss
 
 
-def validate(d):
+def validate(d, *, weights=None):
     errs = list(d.get("_errors", []))
+    if weights is None and "score_profile" in d:
+        return errs + ["Versioned score profiles require the idea-triage CLI."]
+    weights = WEIGHTS if weights is None else weights
     for k in TOPKEYS:
         if not str(d.get(k, "")).strip():
             errs.append("缺 %s（时效/归属不可核 ⇒ 拒收）" % k)
@@ -195,9 +198,9 @@ def validate(d):
         errs.append("date 必须为有效日期 YYYY-MM-DD")
     if "|" in str(d.get("reviewer", "")):
         errs.append("reviewer 不得含台账分隔符 |")
-    _, miss = weighted_total(d)
+    _, miss = weighted_total(d, weights)
     for k in miss:
-        errs.append("rubric 缺维度 %s（权重 %d）" % (k, WEIGHTS[k]))
+        errs.append("rubric 缺维度 %s（权重 %d）" % (k, weights[k]))
     for k, v in d.get("rubric", {}).items():
         if v is not None and not (0 <= v <= 10):
             errs.append("rubric.%s=%s 越界（0-10）" % (k, v))
@@ -235,7 +238,7 @@ def validate(d):
 
 
     if not miss and d.get("verdict") in VERDICTS:
-        total = weighted_total(d)[0]
+        total = weighted_total(d, weights)[0]
         nb = near_band(total)
         if nb:
             implied = implied_verdict(total)

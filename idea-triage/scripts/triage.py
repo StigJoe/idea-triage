@@ -41,6 +41,24 @@ IDENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,79}")
 EVIDENCE_ROW = re.compile(r"- \[(一手资料|静态核验|合成验证|真实实测)\] (.+?) \| (.+?) \| (.+)")
 SOURCE_LINK = re.compile(r"\[[^\[\]]+\]\(([^\s()]+)\)")
 
+# Keep this version fixed so old reports can be replayed after recalibration.
+TRACK_V1 = {
+    "market": dict(demand=25, supply_gap=15, competitor_traction=20,
+                   segment_crowding=10, feasibility=15, my_edge=15),
+    "self_use": dict(demand=30, supply_gap=15, competitor_traction=5,
+                     segment_crowding=5, feasibility=30, my_edge=15),
+    "niche": dict(demand=30, supply_gap=20, competitor_traction=10,
+                  segment_crowding=15, feasibility=15, my_edge=10),
+    "research": dict(demand=30, supply_gap=25, competitor_traction=5,
+                     segment_crowding=5, feasibility=25, my_edge=10),
+}
+COST_FIELDS = ("cost_affordability", "cost_payoff")
+GRADES = dict(zip(("go", "conditional-go", "pivot", "kill"), "ABCD"))
+STEP_TIERS = {
+    "go": "继续当前步骤", "conditional-go": "先完成条件",
+    "pivot": "改换方案", "kill": "停止当前路线",
+}
+
 
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -141,9 +159,33 @@ def concrete(value):
     return bool(value and value not in {"待补", "待验证", "TODO", "TBD"} and not value.startswith("<"))
 
 
+def cost_effectiveness(doc):
+    values = []
+    for key in COST_FIELDS:
+        value = doc.get(key)
+        if value == "unknown":
+            continue
+        try:
+            score = float(value)
+        except (TypeError, ValueError):
+            score = -1
+        if not 0 <= score <= 10:
+            raise ValueError(f"{key} must be a number from 0 to 10 or 'unknown'.")
+        values.append(score)
+    return round(5 * sum(values), 1) if len(values) == len(COST_FIELDS) else None
+
+
 def analyze(project, path, require_outlook):
     d = core.parse(path)
-    errors = core.validate(d)
+    profile = d.get("score_profile")
+    weights = core.WEIGHTS
+    if profile is not None:
+        if profile != "track-v1" or d.get("idea_type") not in TRACK_V1:
+            raise ValueError("Expected score_profile track-v1 and a supported idea_type.")
+        weights = TRACK_V1[d["idea_type"]]
+    elif any(key in d for key in COST_FIELDS):
+        raise ValueError("Cost fields require a score_profile.")
+    errors = core.validate(d, weights=weights)
     if require_outlook and not d["outlook"]:
         errors.append("A formal review requires the second axis (outlook).")
     if errors:
@@ -151,14 +193,23 @@ def analyze(project, path, require_outlook):
     if require_outlook:
         check_evidence(project, path, d)
     conditions = review_conditions(d) if require_outlook else []
-    direction, _ = core.weighted_total(d)
+    direction, _ = core.weighted_total(d, weights)
     implied = core.implied_verdict(direction)
     outlook, _ = core.outlook_score(d)
     tier = core.investment_tier(implied, outlook)[0] if outlook is not None else None
-    return conditions, {
+    result = {
         "verdict": d["verdict"], "implied": implied, "direction": direction,
         "outlook": outlook, "tier": tier, "conflict": d["verdict"] != implied,
     }
+    if profile is not None:
+        result["tier"] = STEP_TIERS[d["verdict"]]
+        result["score_profile"] = f"{d['idea_type']}/{profile}"
+        result["cost_effectiveness"] = cost_effectiveness(d)
+        result["grades"] = {
+            key: GRADES[core.implied_verdict(result[key])] if result[key] is not None else None
+            for key in ("direction", "outlook", "cost_effectiveness")
+        }
+    return conditions, result
 
 
 def review_conditions(doc):
